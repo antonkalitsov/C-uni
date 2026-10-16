@@ -55,3 +55,7 @@ CodeCoverage/
 *.VisualState.xml
 TestResult.xml
 nunit-*.xml
+
+# Visual Studio and local logs
+.vs/
+*.log
