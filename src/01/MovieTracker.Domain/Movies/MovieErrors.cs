@@ -18,4 +18,7 @@ public static class MovieErrors
 
     public static Error PosterUrlRequired { get; } =
         new("Movies.PosterUrlRequired", "A movie must have a poster URL.");
+
+    public static Error InvalidGenre { get; } =
+        new("Movies.InvalidGenre", "The specified genre is not valid.");
 }

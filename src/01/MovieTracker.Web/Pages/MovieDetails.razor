@@ -1,22 +1,47 @@
 @page "/movies/{Id:guid}"
+@inject MovieApiClient MovieApiClient
+@inject NavigationManager Navigation
 
 <PageTitle>@(movie?.Title ?? "Movie details")</PageTitle>
 
-@if (movie is null)
+@if (isLoading)
 {
-    <section class="state-panel"><h1>Demo details unavailable</h1><p>This starter includes local details for a few seeded movie IDs.</p><NavLink class="button" href="movies">Back to movies</NavLink></section>
+    <div class="state-panel"><span class="spinner" aria-hidden="true"></span><h2>Loading movie…</h2><p>Asking the API for this title.</p></div>
+}
+else if (errorMessage is not null)
+{
+    <div class="state-panel error-panel" role="alert"><span class="state-icon">!</span><h2>We couldn't load this movie</h2><p>@errorMessage</p><button class="button" @onclick="LoadMovieAsync">Try again</button></div>
+}
+else if (movie is null)
+{
+    <section class="state-panel"><h1>Movie not found</h1><p>There is no movie with this id in the catalogue. It may have been deleted.</p><NavLink class="button" href="movies">Back to movies</NavLink></section>
 }
 else
 {
     <section class="details-hero page-section">
-        <img src="@movie.PosterPath" alt="Abstract poster for @movie.Title" />
+        <img src="@movie.PosterUrl" alt="Abstract poster for @movie.Title" />
         <div>
-            <DemoFeatureNotice />
-            <span class="genre-badge">@movie.Genre</span>
+            <span class="genre-badge">@FormatGenre(movie.Genre)</span>
             <h1>@movie.Title</h1>
-            <p class="details-meta">@movie.Year · @movie.DurationMinutes min · <b>★ @movie.Rating.ToString("0.0")</b></p>
+            <p class="details-meta">@movie.ReleaseYear</p>
             <p class="details-description">@movie.Description</p>
             <div class="details-actions">
+                <NavLink class="button" href="@($"movies/{movie.Id}/edit")">Edit movie</NavLink>
+                @if (confirmingDelete)
+                {
+                    <span>Delete this movie?</span>
+                    <button class="button danger-button" @onclick="DeleteAsync" disabled="@isDeleting">@(isDeleting ? "Deleting…" : "Yes, delete")</button>
+                    <button class="quiet-button" @onclick="() => confirmingDelete = false" disabled="@isDeleting">Cancel</button>
+                }
+                else
+                {
+                    <button class="quiet-button" @onclick="() => confirmingDelete = true">Delete</button>
+                }
+            </div>
+            @if (deleteError is not null) { <div class="form-message error-message" role="alert">@deleteError</div> }
+
+            <DemoFeatureNotice />
+            <div class="details-actions demo-actions">
                 <button class="button" @onclick="ToggleWatchlist">@(inWatchlist ? "✓ In watchlist" : "+ Add to watchlist")</button>
                 @if (demoMessage is not null) { <span class="success-message">@demoMessage</span> }
             </div>
@@ -40,19 +65,56 @@ else
 }
 
 @code {
-    [Parameter] 
+    [Parameter]
     public Guid Id { get; set; }
-    private DemoMovie? movie;
+    private MovieDetailsModel? movie;
+    private bool isLoading = true;
+    private string? errorMessage;
+    private bool confirmingDelete;
+    private bool isDeleting;
+    private string? deleteError;
     private bool inWatchlist;
     private int? userRating;
     private string? demoMessage;
 
-    protected override void OnParametersSet()
+    protected override Task OnParametersSetAsync() => LoadMovieAsync();
+
+    private async Task LoadMovieAsync()
     {
-        // TODO(Student Exercise 2): Replace hardcoded movie details with GET /api/movies/{id}.
-        movie = DemoData.Movies.FirstOrDefault(item => item.Id == Id);
+        isLoading = true;
+        errorMessage = null;
+        try
+        {
+            movie = await MovieApiClient.GetMovieAsync(Id);
+        }
+        catch (Exception)
+        {
+            movie = null;
+            errorMessage = "Make sure the API is running at the address configured in wwwroot/appsettings.json.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
     }
 
+    private async Task DeleteAsync()
+    {
+        isDeleting = true;
+        deleteError = null;
+        try
+        {
+            await MovieApiClient.DeleteMovieAsync(Id);
+            Navigation.NavigateTo("movies");
+        }
+        catch (Exception)
+        {
+            deleteError = "The movie could not be deleted. Make sure the API is running and try again.";
+            isDeleting = false;
+        }
+    }
+
+    private static string FormatGenre(string genre) => genre == "ScienceFiction" ? "Science Fiction" : genre;
     private void ToggleWatchlist() { inWatchlist = !inWatchlist; demoMessage = "Saved locally for this demo session."; }
     private void Rate(int score) { userRating = score; demoMessage = $"Demo rating set to {score}/10."; }
 }

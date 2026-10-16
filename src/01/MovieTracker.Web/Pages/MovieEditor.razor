@@ -1,0 +1,121 @@
+@page "/movies/new"
+@page "/movies/{Id:guid}/edit"
+@inject MovieApiClient MovieApiClient
+@inject NavigationManager Navigation
+
+<PageTitle>@(IsEdit ? "Edit movie" : "Add movie")</PageTitle>
+
+@if (isLoading)
+{
+    <div class="state-panel"><span class="spinner" aria-hidden="true"></span><h2>Loading movie…</h2><p>Asking the API for this title.</p></div>
+}
+else if (loadError is not null)
+{
+    <div class="state-panel error-panel" role="alert"><span class="state-icon">!</span><h2>We couldn't load this movie</h2><p>@loadError</p><NavLink class="button" href="movies">Back to movies</NavLink></div>
+}
+else
+{
+    <section class="auth-wrap page-section">
+        <div class="auth-card wide">
+            <span class="eyebrow">@(IsEdit ? "EDIT MOVIE" : "NEW MOVIE")</span>
+            <h1>@(IsEdit ? $"Edit {originalTitle}" : "Add a movie")</h1>
+            <p>@(IsEdit ? "Update the details and save your changes." : "Add a new title to the catalogue.")</p>
+            <form @onsubmit="SubmitAsync" @onsubmit:preventDefault>
+                <label>Title<input @bind="form.Title" required placeholder="Movie title" /></label>
+                <label>Description<textarea @bind="form.Description" required rows="4" placeholder="A short summary of the story"></textarea></label>
+                <div class="form-columns">
+                    <label>
+                        Genre
+                        <select @bind="form.Genre">
+                            @foreach (var genre in MovieFormModel.Genres)
+                            {
+                                <option value="@genre">@FormatGenre(genre)</option>
+                            }
+                        </select>
+                    </label>
+                    <label>Release year<input type="number" @bind="form.ReleaseYear" required min="1888" /></label>
+                </div>
+                <label>Poster URL<input @bind="form.PosterUrl" required placeholder="/images/posters/arrival.svg" /></label>
+                @if (errors.Count > 0)
+                {
+                    <ul class="form-message error-message" role="alert">
+                        @foreach (var error in errors) { <li>@error</li> }
+                    </ul>
+                }
+                <button class="button" type="submit" disabled="@isSaving">@(isSaving ? "Saving…" : IsEdit ? "Save changes" : "Add movie")</button>
+            </form>
+            <small><NavLink href="@(IsEdit ? $"movies/{Id}" : "movies")">Cancel</NavLink></small>
+        </div>
+    </section>
+}
+
+@code {
+    [Parameter]
+    public Guid? Id { get; set; }
+    private bool IsEdit => Id is not null;
+    private MovieFormModel form = new();
+    private string? originalTitle;
+    private bool isLoading;
+    private string? loadError;
+    private bool isSaving;
+    private IReadOnlyList<string> errors = [];
+
+    protected override async Task OnParametersSetAsync()
+    {
+        if (Id is not { } id)
+        {
+            return;
+        }
+
+        isLoading = true;
+        try
+        {
+            var movie = await MovieApiClient.GetMovieAsync(id);
+            if (movie is null)
+            {
+                loadError = "There is no movie with this id in the catalogue. It may have been deleted.";
+            }
+            else
+            {
+                form = MovieFormModel.FromMovie(movie);
+                originalTitle = movie.Title;
+            }
+        }
+        catch (Exception)
+        {
+            loadError = "Make sure the API is running at the address configured in wwwroot/appsettings.json.";
+        }
+        finally
+        {
+            isLoading = false;
+        }
+    }
+
+    private async Task SubmitAsync()
+    {
+        isSaving = true;
+        errors = [];
+        try
+        {
+            var result = Id is { } id
+                ? await MovieApiClient.UpdateMovieAsync(id, form)
+                : await MovieApiClient.CreateMovieAsync(form);
+
+            if (result.IsSuccess)
+            {
+                Navigation.NavigateTo($"movies/{result.Movie!.Id}");
+                return;
+            }
+
+            errors = result.Errors;
+        }
+        catch (Exception)
+        {
+            errors = ["The movie could not be saved. Make sure the API is running and try again."];
+        }
+
+        isSaving = false;
+    }
+
+    private static string FormatGenre(string genre) => genre == "ScienceFiction" ? "Science Fiction" : genre;
+}
